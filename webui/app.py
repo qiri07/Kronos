@@ -29,50 +29,125 @@ tokenizer = None
 model = None
 predictor = None
 
-# Available model configurations
-AVAILABLE_MODELS = {
-    'kronos-mini': {
-        'name': 'Kronos-mini',
-        'model_id': 'NeoQuasar/Kronos-mini',
-        'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-2k',
-        'context_length': 2048,
-        'params': '4.1M',
-        'description': 'Lightweight model, suitable for fast prediction'
-    },
-    'kronos-small': {
-        'name': 'Kronos-small',
-        'model_id': 'NeoQuasar/Kronos-small',
-        'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
-        'context_length': 512,
-        'params': '24.7M',
-        'description': 'Small model, balanced performance and speed'
-    },
-    'kronos-base': {
-        'name': 'Kronos-base',
-        'model_id': 'NeoQuasar/Kronos-base',
-        'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
-        'context_length': 512,
-        'params': '102.3M',
-        'description': 'Base model, provides better prediction quality'
+# Get project root directory (one level up from webui)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(PROJECT_ROOT, 'models')
+
+# Available model configurations - check local models first, then fall back to HuggingFace
+AVAILABLE_MODELS = {}
+
+def _detect_local_models():
+    """Scan local models directory and build available models config"""
+    local_models = {}
+    if os.path.exists(MODELS_DIR):
+        for model_dir in os.listdir(MODELS_DIR):
+            model_path = os.path.join(MODELS_DIR, model_dir)
+            if os.path.isdir(model_path) and 'config.json' in os.listdir(model_path):
+                local_models[model_dir] = model_path
+    return local_models
+
+def _build_available_models():
+    """Build AVAILABLE_MODELS dict, preferring local models over HuggingFace IDs"""
+    local_models = _detect_local_models()
+
+    # Base configurations
+    base_configs = {
+        'kronos-mini': {
+            'name': 'Kronos-mini',
+            'model_id': 'NeoQuasar/Kronos-mini',
+            'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-2k',
+            'context_length': 2048,
+            'params': '4.1M',
+            'description': 'Lightweight model, suitable for fast prediction'
+        },
+        'kronos-small': {
+            'name': 'Kronos-small',
+            'model_id': 'NeoQuasar/Kronos-small',
+            'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
+            'context_length': 512,
+            'params': '24.7M',
+            'description': 'Small model, balanced performance and speed'
+        },
+        'kronos-base': {
+            'name': 'Kronos-base',
+            'model_id': 'NeoQuasar/Kronos-base',
+            'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
+            'context_length': 512,
+            'params': '102.3M',
+            'description': 'Base model, provides better prediction quality'
+        }
     }
-}
+
+    # Override with local paths if available
+    models = {}
+    for key, config in base_configs.items():
+        model_key = config['model_id'].split('/')[-1]  # e.g., 'Kronos-base'
+        tokenizer_key = config['tokenizer_id'].split('/')[-1]  # e.g., 'Kronos-Tokenizer-base'
+
+        # Use local path if available, otherwise keep HuggingFace ID
+        if model_key in local_models:
+            config = config.copy()
+            config['model_id'] = local_models[model_key]
+        if tokenizer_key in local_models:
+            config = config.copy()
+            config['tokenizer_id'] = local_models[tokenizer_key]
+
+        models[key] = config
+
+    return models
+
+AVAILABLE_MODELS = _build_available_models()
+print(f"Detected local models: {_detect_local_models()}")
 
 def load_data_files():
-    """Scan data directory and return available data files"""
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+    """Scan data directories and return available data files"""
     data_files = []
+    scanned_dirs = []
+    seen_files = set()  # Track already seen files by normalized absolute path
     
-    if os.path.exists(data_dir):
-        for file in os.listdir(data_dir):
-            if file.endswith(('.csv', '.feather')):
+    # Multiple candidate directories to scan (priority order)
+    # Only scan primary data directories, not subdirectories
+    candidate_dirs = [
+        os.path.join(PROJECT_ROOT, 'data'),
+    ]
+    
+    for data_dir in candidate_dirs:
+        if os.path.exists(data_dir):
+            scanned_dirs.append(data_dir)
+            for file in os.listdir(data_dir):
+                # Skip files that don't end with supported extensions
+                if not file.endswith(('.csv', '.feather')):
+                    continue
+                
+                # Skip output files (regression outputs, etc.)
+                if file.startswith('regression_output_') or file.startswith('prediction_'):
+                    continue
+                
                 file_path = os.path.join(data_dir, file)
+                abs_path = os.path.realpath(file_path)  # Resolve symlinks and normalize
+                
+                # Skip duplicates
+                if abs_path in seen_files:
+                    continue
+                seen_files.add(abs_path)
+                
                 file_size = os.path.getsize(file_path)
+                # Use relative path from project root for better UX
+                rel_path = os.path.relpath(file_path, PROJECT_ROOT)
                 data_files.append({
                     'name': file,
-                    'path': file_path,
-                    'size': f"{file_size / 1024:.1f} KB" if file_size < 1024*1024 else f"{file_size / (1024*1024):.1f} MB"
+                    'path': abs_path,
+                    'rel_path': rel_path,
+                    'size': f"{file_size / 1024:.1f} KB" if file_size < 1024*1024 else f"{file_size / (1024*1024):.1f} MB",
+                    'directory': os.path.basename(data_dir)
                 })
     
+    # If no files found, return empty list with a hint
+    if not data_files:
+        print(f"⚠️  No data files found in: {scanned_dirs}")
+        return []
+    
+    print(f"✅ Found {len(data_files)} data file(s) in: {scanned_dirs}")
     return data_files
 
 def load_data_file(file_path):
@@ -336,7 +411,18 @@ def index():
 def get_data_files():
     """Get available data file list"""
     data_files = load_data_files()
-    return jsonify(data_files)
+    if not data_files:
+        return jsonify({
+            'files': [],
+            'hint': 'No data files found. Please add CSV/feather files with OHLC columns to data/, examples/, or tests/data/ directories.',
+            'scanned_dirs': [
+                'data/',
+                'examples/',
+                'tests/data/',
+                'finetune_csv/data/'
+            ]
+        })
+    return jsonify({'files': data_files})
 
 @app.route('/api/load-data', methods=['POST'])
 def load_data():
@@ -665,9 +751,16 @@ def load_model():
 @app.route('/api/available-models')
 def get_available_models():
     """Get available model list"""
+    local_models = _detect_local_models()
+    available_local = {k: v for k, v in AVAILABLE_MODELS.items()
+                       if v['model_id'].startswith(PROJECT_ROOT) or
+                       v['tokenizer_id'].startswith(PROJECT_ROOT)}
+
     return jsonify({
         'models': AVAILABLE_MODELS,
-        'model_available': MODEL_AVAILABLE
+        'model_available': MODEL_AVAILABLE,
+        'local_models': list(local_models.keys()),
+        'available_local': list(available_local.keys())
     })
 
 @app.route('/api/model-status')

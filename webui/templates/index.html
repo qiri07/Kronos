@@ -485,9 +485,12 @@
                 <div class="form-group">
                     <label for="data-file-select">Select Data File:</label>
                     <select id="data-file-select">
-                        <option value="">Please load data file list first</option>
+                        <option value="">Loading data files...</option>
                     </select>
                     <small class="form-text">Select K-line data file from data directory</small>
+                    <div id="data-file-hint" class="status warning" style="display: none; margin-top: 10px;">
+                        No data files found. Add CSV files with OHLC columns to data/ directory.
+                    </div>
                 </div>
 
                 <button id="load-data-btn" class="btn btn-secondary">
@@ -672,6 +675,17 @@
                     availableModels = response.data.models;
                     populateModelSelect();
                     console.log('✅ Available models loaded successfully:', availableModels);
+                    // Auto-select first local model
+                    if (response.data.available_local && response.data.available_local.length > 0) {
+                        const firstLocal = response.data.available_local[0];
+                        const modelSelect = document.getElementById('model-select');
+                        for (let i = 0; i < modelSelect.options.length; i++) {
+                            if (modelSelect.options[i].value === firstLocal) {
+                                modelSelect.selectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
                 } else {
                     console.warn('⚠️ Kronos model library not available');
                     showStatus('warning', 'Kronos model library not available, will use simulated prediction');
@@ -685,7 +699,7 @@
         // Populate model selection dropdown
         function populateModelSelect() {
             const modelSelect = document.getElementById('model-select');
-            modelSelect.innerHTML = '<option value="">Please select model</option>';
+            modelSelect.innerHTML = '<option value="">请选择模型</option>';
             
             Object.entries(availableModels).forEach(([key, model]) => {
                 const option = document.createElement('option');
@@ -754,21 +768,48 @@
         async function loadDataFiles() {
             try {
                 const response = await axios.get('/api/data-files');
-                const dataFiles = response.data;
+                const data = response.data;
                 
                 const dataFileSelect = document.getElementById('data-file-select');
+                const dataFileHint = document.getElementById('data-file-hint');
+                
+                // Handle both old and new API response formats
+                let dataFiles = data.files || data;
+                
+                if (!dataFiles || dataFiles.length === 0) {
+                    // Show hint when no files found
+                    dataFileSelect.innerHTML = '<option value="">No data files available</option>';
+                    dataFileSelect.disabled = true;
+                    
+                    if (data.hint) {
+                        dataFileHint.textContent = data.hint;
+                        dataFileHint.style.display = 'block';
+                    }
+                    console.warn('⚠️ No data files found');
+                    return;
+                }
+                
                 dataFileSelect.innerHTML = '<option value="">Please select data file</option>';
                 
                 dataFiles.forEach(file => {
                     const option = document.createElement('option');
                     option.value = file.path;
-                    option.textContent = `${file.name} (${file.size})`;
+                    // Show file name and directory for better UX
+                    const displayName = file.rel_path || file.name;
+                    option.textContent = `${file.name} (${file.size}) - ${file.directory || ''}`;
                     dataFileSelect.appendChild(option);
                 });
                 
-                console.log('✅ Data file list loaded successfully:', dataFiles);
+                // Enable the select
+                dataFileSelect.disabled = false;
+                dataFileHint.style.display = 'none';
+                
+                console.log(`✅ Data file list loaded successfully: ${dataFiles.length} file(s)`);
             } catch (error) {
                 console.error('❌ Failed to load data file list:', error);
+                const dataFileSelect = document.getElementById('data-file-select');
+                dataFileSelect.innerHTML = '<option value="">Failed to load data files</option>';
+                dataFileSelect.disabled = true;
                 showStatus('error', 'Failed to load data file list');
             }
         }
