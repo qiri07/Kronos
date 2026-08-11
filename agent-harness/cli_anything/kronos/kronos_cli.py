@@ -213,7 +213,7 @@ def _run_repl() -> None:
                     models.append([key, info["params"], str(info["max_context"]), info["model"]])
                 skin.table(["Name", "Params", "MaxCtx", "ModelRepo"], models)
             elif args.strip().startswith("load"):
-                name = args.split(None, 1)[1].strip() if " " in args else "kronos-small"
+                name = args.split(None, 1)[1].strip() if " " in args else "kronos-base"
                 predictor, meta = __import__("cli_anything.kronos.utils.kronos_backend", fromlist=["load_model"]).load_model(name, device=_resolve_device())
                 session.set_model(meta["name"], meta["model_path"], meta["device"], meta["max_context"])
                 skin.success(f"Model loaded: {meta['name']} ({meta['params']}) on {meta['device']}")

@@ -33,8 +33,8 @@ _AVAILABLE_MODELS = {
         "params": "24.7M",
     },
     "kronos-base": {
-        "model": "NeoQuasar/Kronos-base",
-        "tokenizer": "NeoQuasar/Kronos-Tokenizer-base",
+        "model": "/run/media/onai/MyDisk/Work/Kronos/models/Kronos-base",
+        "tokenizer": "/run/media/onai/MyDisk/Work/Kronos/models/Kronos-Tokenizer-base",
         "max_context": 512,
         "params": "102.3M",
     },

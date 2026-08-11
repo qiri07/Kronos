@@ -28,7 +28,7 @@ def predict():
 
 
 @predict.command("info")
-@click.option("--name", "model_name", default="kronos-small", help="Model identifier (kronos-mini, kronos-small, kronos-base, or HF repo id)")
+@click.option("--name", "model_name", default="kronos-base", help="Model identifier (kronos-mini, kronos-small, kronos-base, or HF repo id)")
 @click.option("--device", default=None, help="Device: cpu, cuda:0, mps (auto-detected if omitted)")
 @click.pass_context
 def predict_info(ctx, model_name, device):
@@ -62,7 +62,7 @@ def run(ctx, data_path, lookback, pred_len, model_name, device, temperature, top
     sess = _get_session()
 
     # Resolve model
-    resolve_model = model_name or sess.model_name or "kronos-small"
+    resolve_model = model_name or sess.model_name or "kronos-base"
     resolve_device = device or sess.device or _resolve_device()
     predictor, meta = load_model(resolve_model, device=resolve_device)
     if sess.model_name != resolve_model or sess.device != resolve_device:
@@ -115,7 +115,7 @@ def run(ctx, data_path, lookback, pred_len, model_name, device, temperature, top
 def batch(ctx, data_dir, lookback, pred_len, model_name, device, temperature, top_p, top_k, sample_count, output_dir, json_out, verbose):
     """Batch-predict across all CSV files in a directory."""
     sess = _get_session()
-    resolve_model = model_name or sess.model_name or "kronos-small"
+    resolve_model = model_name or sess.model_name or "kronos-base"
     resolve_device = device or sess.device or _resolve_device()
     predictor, meta = load_model(resolve_model, device=resolve_device)
     if sess.model_name != resolve_model or sess.device != resolve_device:
